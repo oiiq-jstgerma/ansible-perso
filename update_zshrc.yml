@@ -1,0 +1,16 @@
+---
+- name: Ensure inspect_env_vars function is added to .zshrc on multiple hosts
+  hosts: docker_swarm_1
+  become: no
+  tasks:
+    - name: Ensure the inspect_env_vars function is present in .zshrc
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.zshrc"
+        state: present
+        line: |
+          # Function to inspect and sort Docker service environment variables
+          function inspect_env_vars() {
+            docker service inspect "$1" --format '{{ "{{" }}json .Spec.TaskTemplate.ContainerSpec.Env{{ "}}" }}' | jq -r '.[]' | sort
+          }
+      become_user: "{{ ansible_env.USER }}"
+      # when: ansible_env.SHELL == '/bin/zsh'

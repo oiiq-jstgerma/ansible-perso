@@ -1,0 +1,58 @@
+---
+- name: Install lazydocker, btop, and yazi on Red Hat-based systems
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure EPEL repository is enabled (for btop)
+      ansible.builtin.yum:
+        name: epel-release
+        state: present
+
+    - name: Install btop
+      ansible.builtin.yum:
+        name: btop
+        state: present
+
+    - name: Install lazydocker
+      block:
+        - name: Download lazydocker binary
+          ansible.builtin.get_url:
+            url: "https://github.com/jesseduffield/lazydocker/releases/latest/download/lazydocker_$(uname -s)_$(uname -m).tar.gz"
+            dest: "/tmp/lazydocker.tar.gz"
+
+        - name: Extract lazydocker
+          ansible.builtin.unarchive:
+            src: "/tmp/lazydocker.tar.gz"
+            dest: "/usr/local/bin/"
+            remote_src: yes
+
+        - name: Ensure lazydocker is executable
+          ansible.builtin.file:
+            path: /usr/local/bin/lazydocker
+            mode: '0755'
+
+    - name: Install yazi (from cargo)
+      block:
+        - name: Install Rust and Cargo
+          ansible.builtin.yum:
+            name: rust
+            state: present
+
+        - name: Install yazi using cargo
+          ansible.builtin.command:
+            cmd: cargo install yazi
+            creates: ~/.cargo/bin/yazi
+
+    - name: Verify installation
+      ansible.builtin.command:
+        cmd: "{{ item }} --version"
+      loop:
+        - lazydocker
+        - btop
+        - yazi
+      register: result
+      changed_when: false
+
+    - name: Display installation results
+      ansible.builtin.debug:
+        msg: "{{ result.results | map(attribute='stdout') | list }}"
