@@ -1,0 +1,49 @@
+---
+- name: Update LOG_LEVEL environment variable for Docker Swarm services
+  hosts: all_hosts
+  become: yes
+  vars:
+    new_log_level: "info"  # Change this to your desired log level (debug, info, warn, error, etc.)
+
+  tasks:
+    - name: Get list of all Docker Swarm services
+      ansible.builtin.command:
+        cmd: docker service ls --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: swarm_services
+      changed_when: false
+
+    - name: Get environment variables for each service
+      ansible.builtin.command:
+        cmd: docker service inspect {{ item }} --format "{{ '{{' }}range .Spec.TaskTemplate.ContainerSpec.Env{{ '}}' }}{{ '{{' }}.{{ '}}' }} {{ '{{' }}end{{ '}}' }}"
+      loop: "{{ swarm_services.stdout_lines }}"
+      register: service_envs
+      changed_when: false
+
+    - name: Identify services with LOG_LEVEL environment variable
+      ansible.builtin.set_fact:
+        services_with_log_level: "{{ services_with_log_level | default([]) + [{'name': item.item, 'envs': item.stdout}] }}"
+      loop: "{{ service_envs.results }}"
+      when: "'LOG_LEVEL=' in item.stdout"
+
+    - name: Display services that will be updated
+      ansible.builtin.debug:
+        msg: "Service '{{ item.name }}' will have LOG_LEVEL updated to '{{ new_log_level }}'"
+      loop: "{{ services_with_log_level | default([]) }}"
+      when: services_with_log_level is defined and services_with_log_level | length > 0
+
+    - name: Update LOG_LEVEL for services
+      ansible.builtin.command:
+        cmd: docker service update --env-rm LOG_LEVEL --env-add LOG_LEVEL={{ new_log_level }} {{ item.name }}
+      loop: "{{ services_with_log_level | default([]) }}"
+      when: services_with_log_level is defined and services_with_log_level | length > 0
+      register: update_results
+
+    - name: Display update results
+      ansible.builtin.debug:
+        msg: "Updated {{ services_with_log_level | default([]) | length }} service(s) with LOG_LEVEL={{ new_log_level }}"
+      when: services_with_log_level is defined and services_with_log_level | length > 0
+
+    - name: No services found with LOG_LEVEL
+      ansible.builtin.debug:
+        msg: "No services found with LOG_LEVEL environment variable"
+      when: services_with_log_level is not defined or services_with_log_level | length == 0
